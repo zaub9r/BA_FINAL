@@ -15,7 +15,7 @@
 
 #define FFT_BINS 512
 #define FFT_SUBBANDS 64
-#define ENERGY_HISTORY 50
+#define ENERGY_HISTORY 16
 
 
 #endif /* BeatDetector_hpp */
@@ -36,20 +36,28 @@ public:
     int buffersize;
     int fftsize;
     int historyPos;
+    int samplesCounted;
+    
+    float smoothedVolume;
+    float mappedVolume;
     
     bool usefft;
     bool detectbeat;
     
     
-    void updateFft();
+    vector<float>channel;
+    vector<float>channelHistory;
+    
     
     
     Beatdetector();
     void enableBeatDetect(){detectbeat = true;}
-    void disableBeatDetect(){ detectbeat = false;}
-    void audioReceived(float* input, int bufferSize, int nChannels);
+    void disableBeatDetect(){detectbeat = false;}
+    void audioReceived(float * input, int bufferSize, int nChannels);
     
-    
+    void updateRMS();
+    void updateFft();
+    void updateMicIn(float damping);
     void update(int time);
     void setGain(float damping, int subband);
     void findPeak(int binMin, int binMax);
@@ -64,10 +72,10 @@ public:
     float getMagnitude();
     float getInFft();
     float getAverageEnergy(int subband);
-    float getSmoothedValue(float smoothamount, int subband);
-    float getGainedBand(float damping ,int subband);
+    float getSmoothedVolume();
+    float getOnsetValue(int subband);
     
-    void getAverageEnergyTotal(int SubbandMin,int SubbandMax);
+    //void getAverageEnergyTotal(int SubbandMin,int SubbandMax);
     
     float * in_fft;
     float * magnitude;
@@ -77,13 +85,8 @@ public:
     float * magnitude_average;
     
     ofParameterGroup beatParams;
-    ofParameter<float>multiplier;
+    ofParameter<float>sensitivity;
     ofParameter<float>threshhold;
     ofParameter<float>gain;
     //ofParameter<float>
-    
-
-    
-    
-    
 };

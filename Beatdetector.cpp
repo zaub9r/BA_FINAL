@@ -11,16 +11,25 @@
 Beatdetector::Beatdetector() : buffersize(1024), fftsize(512){
     
     
-    beatParams.add(multiplier.set("Sensitivity", 1.0, 0.0, 1.0));
-    beatParams.add(threshhold.set("Threshhold", 0.20, 0, 1.0));
-    beatParams.add(gain.set("Gain", 1.0, 0.0, 2.0));
+    beatParams.add(sensitivity.set("Sensitivity", 0.0, -1.0, 1.0));
+    beatParams.add(threshhold.set("Threshhold", 0.20, 0, 1.5));
+    beatParams.add(gain.set("Gain", 0.0, 1.0, 2.0));
     
     
     usefft = true;
+    
     int historyPos = 0;
     int fftsize = 512;
     int buffersize = 1024;
+    int samplesCounted = 0;
+    
+    smoothedVolume = 0.0;
+    mappedVolume = 0.0;
+    
     enableBeatDetect();
+    
+    channel.assign(buffersize, 0.0);
+    channelHistory.assign(400, 0.0);
     
     
     for(int i = 0; i < fftsize; i++)
@@ -55,16 +64,25 @@ Beatdetector::Beatdetector() : buffersize(1024), fftsize(512){
 
 void Beatdetector::update(int time){
     updateFft();
+    updateRMS();
+    updateMicIn(gain);
 }
 
-int Beatdetector::getBufferSize(){
-    return buffersize;
-}
-void Beatdetector::setGain(float damping, int subband){
-    fftSubbands[subband] *= damping;
+void Beatdetector::updateRMS(){
+    mappedVolume = ofMap(smoothedVolume, 0, 0.50, 0, 1, true);
+    channelHistory.push_back(mappedVolume);
+    
+    if (channelHistory.size() >= 400) {
+        channelHistory.erase(channelHistory.begin(), channelHistory.begin() + 1);
+    }
 }
 
 
+void Beatdetector::updateMicIn(float damping){
+    for (int i = 0; i < FFT_SUBBANDS; i++) {
+        setGain(damping, i);
+    }
+}
 
 void Beatdetector::updateFft(){
     if (usefft) {
@@ -77,7 +95,6 @@ void Beatdetector::updateFft(){
             // multiply amplitude value of recieved frequency by 0.9 & let decrease
             fftSmoothed[i] *= 0.95f;
         }
-        
         if (detectbeat) {
             //subband calculation
             for(int i = 0; i < FFT_SUBBANDS; i++) {
@@ -121,7 +138,7 @@ void Beatdetector::updateFft(){
             }
             for(int i = 0; i < FFT_SUBBANDS; i++) {
                 //add calculated subband energy to position of historyPos of energyHistory
-                energyHistory[i][historyPos] = fftSubbands[i];
+                energyHistory[i][historyPos] = fftSubbands[i] *gain;
             }
             // % = modulo -> Rest
             // representing pseudo enviroment list by looping subscript of arrangement
@@ -131,16 +148,22 @@ void Beatdetector::updateFft(){
 }
 
 bool Beatdetector::checkBeat(int subband){
-    if(fftSubbands[subband] * multiplier > (averageEnergy[subband] * beatConstant[subband] ) && (fftSubbands[subband] > threshhold)){
+    if(fftSubbands[subband] * gain > (averageEnergy[subband] * beatConstant[subband] + (averageEnergy[subband] *sensitivity) ) && (fftSubbands[subband] > threshhold)){
         return true;
     }
 }
 
-void Beatdetector::getAverageEnergyTotal(int SubbandStart, int SubbandEnd){}
+//void Beatdetector::getAverageEnergyTotal(int SubbandStart, int SubbandEnd){}
 
 
 
+void Beatdetector::setGain(float damping, int subband){
+    fftSubbands[subband] *= damping;
+}
 
+float Beatdetector::getSmoothedVolume(){
+    return smoothedVolume;
+}
 
 float Beatdetector::getAverageEnergy(int subband){
     return averageEnergy[subband];
@@ -154,7 +177,18 @@ float Beatdetector::getMagnitude(){
     return * magnitude;
 }
 
+float Beatdetector::getOnsetValue(int subband){
+    float onsetValue = 0.0;
+    if (fftSubbands[subband] * gain > (averageEnergy[subband] * beatConstant[subband] + (averageEnergy[subband] *sensitivity) ) && (fftSubbands[subband] > threshhold)){
+        onsetValue = ((fftSubbands[subband] * gain) - (averageEnergy[subband] * beatConstant[subband] + (averageEnergy[subband] *sensitivity)));
+    }
+    return onsetValue;
+}
 
+
+int Beatdetector::getBufferSize(){
+    return buffersize;
+}
 
 void Beatdetector::audioReceived(float* input, int bufferSize, int nChannels) {
     
@@ -168,7 +202,8 @@ void Beatdetector::audioReceived(float* input, int bufferSize, int nChannels) {
         // square root / magnitude was too intense so ^1/2
         magnitude[i] = powf(magnitude[i], 0.5);
     }
-    //calculation of average fft amplitude value
+    
+        //calculation of average fft amplitude value
     for (int i = 0; i < fftsize; i++) {
         float x = 0.01;
         magnitude_average[i] = (magnitude[i] * x) + (magnitude_average[i] * (1 - x));

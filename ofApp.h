@@ -25,13 +25,15 @@ class ofApp : public ofBaseApp{
 		void gotMessage(ofMessage msg);
     
     void audioReceived(float * input, int bufferSize, int nChannels);
-    void drawFftData(float width, float height);
-    void drawAverageEnergy(float width, float height);
+    void drawFftData(float xPos, float yPos, float width, float height, float distance);
+    void drawAverageEnergy(float width, float height, float xPos, float yPos, float distance);
     void drawBeatDetect(float width, float height, int bandpicker);
-    void drawThreshholdLine(float width, float height);
-    
+    void drawThreshholdLine(float width, float height, float xPos, float yPos, float distance);
+    void drawAudioChannel(float width, float height, float xPos, float yPos);
+    void drawRMS(float width, float height, float xPos, float yPos);
+    //ofSoundStream soundstream;
     ofParameterGroup params;
     ofParameter<int>bandpicker;
     ofxPanel gui;
     
-};
+   };
