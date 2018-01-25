@@ -15,7 +15,7 @@
 
 #define FFT_BINS 512
 #define FFT_SUBBANDS 64
-#define ENERGY_HISTORY 16
+#define ENERGY_HISTORY 40
 
 
 #endif /* BeatDetector_hpp */
@@ -30,7 +30,7 @@ public:
     float fftSubbands[FFT_SUBBANDS];
     float beatConstant[FFT_SUBBANDS];
     float energyHistory[FFT_SUBBANDS][ENERGY_HISTORY];
- 
+    float mappedFftValues[FFT_SUBBANDS];
     
     
     int buffersize;
@@ -40,6 +40,7 @@ public:
     
     float smoothedVolume;
     float mappedVolume;
+    
     
     bool usefft;
     bool detectbeat;
@@ -57,25 +58,27 @@ public:
     
     void updateRMS();
     void updateFft();
+    void updateMappedFftValues();
     void updateMicIn(float damping);
-    void update(int time);
+    void update();
     void setGain(float damping, int subband);
     void findPeak(int binMin, int binMax);
-    void clearFFT();
+    void mapFftData(int subband);
     
     
     bool checkBeat(int subband);
     
     int getBufferSize();
     
-    float getBand(int subband);
+    float getBandValue(int subband);
     float getMagnitude();
     float getInFft();
     float getAverageEnergy(int subband);
     float getSmoothedVolume();
     float getOnsetValue(int subband);
+    float getMappedFftValue(int subband);
     
-    //void getAverageEnergyTotal(int SubbandMin,int SubbandMax);
+    
     
     float * in_fft;
     float * magnitude;
@@ -88,5 +91,6 @@ public:
     ofParameter<float>sensitivity;
     ofParameter<float>threshhold;
     ofParameter<float>gain;
+    ofParameter<float>blocker;
     //ofParameter<float>
 };

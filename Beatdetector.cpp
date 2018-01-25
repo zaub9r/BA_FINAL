@@ -11,12 +11,10 @@
 Beatdetector::Beatdetector() : buffersize(1024), fftsize(512){
     
     
-    beatParams.add(sensitivity.set("Sensitivity", 0.0, -1.0, 1.0));
+    beatParams.add(sensitivity.set("Sensitivity", 1.34, 1.0, 1.5));
     beatParams.add(threshhold.set("Threshhold", 0.20, 0, 1.5));
-    beatParams.add(gain.set("Gain", 0.0, 1.0, 2.0));
-    
-    
-    usefft = true;
+    beatParams.add(gain.set("Gain", 1.0, 0.0, 3.0));
+
     
     int historyPos = 0;
     int fftsize = 512;
@@ -26,11 +24,8 @@ Beatdetector::Beatdetector() : buffersize(1024), fftsize(512){
     smoothedVolume = 0.0;
     mappedVolume = 0.0;
     
-    enableBeatDetect();
-    
     channel.assign(buffersize, 0.0);
     channelHistory.assign(400, 0.0);
-    
     
     for(int i = 0; i < fftsize; i++)
         fftSmoothed[i] = 0;
@@ -44,6 +39,7 @@ Beatdetector::Beatdetector() : buffersize(1024), fftsize(512){
         averageEnergy[i] = 0;
         fftVariance[i] = 0;
         beatConstant[i] = 0;
+        mappedFftValues[i] = 0;
 
     }
     // Declare FFT
@@ -62,9 +58,13 @@ Beatdetector::Beatdetector() : buffersize(1024), fftsize(512){
     
 }
 
-void Beatdetector::update(int time){
+
+// UPDATES
+
+void Beatdetector::update(){
     updateFft();
     updateRMS();
+    updateMappedFftValues();
     updateMicIn(gain);
 }
 
@@ -84,8 +84,9 @@ void Beatdetector::updateMicIn(float damping){
     }
 }
 
+
+
 void Beatdetector::updateFft(){
-    if (usefft) {
         in_fft = magnitude;
         for (int i = 0; i < fftsize; i++) {
             //take max, either smoothed value or the incomming fft
@@ -93,9 +94,8 @@ void Beatdetector::updateFft(){
                 fftSmoothed[i] = in_fft[i];
             }
             // multiply amplitude value of recieved frequency by 0.9 & let decrease
-            fftSmoothed[i] *= 0.95f;
+            fftSmoothed[i] *= 0.99f;
         }
-        if (detectbeat) {
             //subband calculation
             for(int i = 0; i < FFT_SUBBANDS; i++) {
                 fftSubbands[i] = 0;
@@ -122,7 +122,7 @@ void Beatdetector::updateFft(){
                 //c becomes coefficient of threshhold of detection
                 
                 // C -> Rap/Techno 1.4, Rock 1.1
-                beatConstant[i] = (-0.0025714*fftVariance[i])+1.5142857;
+                beatConstant[i] = (-0.0025714*fftVariance[i])+sensitivity;
             }
             
             //calculate energy average
@@ -138,56 +138,31 @@ void Beatdetector::updateFft(){
             }
             for(int i = 0; i < FFT_SUBBANDS; i++) {
                 //add calculated subband energy to position of historyPos of energyHistory
-                energyHistory[i][historyPos] = fftSubbands[i] *gain;
+                energyHistory[i][historyPos] = fftSubbands[i] * gain;
             }
             // % = modulo -> Rest
             // representing pseudo enviroment list by looping subscript of arrangement
             historyPos = (historyPos+1) % ENERGY_HISTORY;
-        }
+}
+
+
+
+void Beatdetector::updateMappedFftValues(){
+    for (int i = 0; i < FFT_SUBBANDS; i++) {
+        mapFftData(i);
     }
 }
 
-bool Beatdetector::checkBeat(int subband){
-    if(fftSubbands[subband] * gain > (averageEnergy[subband] * beatConstant[subband] + (averageEnergy[subband] *sensitivity) ) && (fftSubbands[subband] > threshhold)){
-        return true;
-    }
-}
-
-//void Beatdetector::getAverageEnergyTotal(int SubbandStart, int SubbandEnd){}
-
-
+// VOIDS
 
 void Beatdetector::setGain(float damping, int subband){
     fftSubbands[subband] *= damping;
 }
 
-float Beatdetector::getSmoothedVolume(){
-    return smoothedVolume;
-}
+void Beatdetector::mapFftData(int subband){
+    mappedFftValues[subband] = ofClamp(fftSubbands[subband], (ofGetHeight()/5.5), 1);
+    //    newval = ofClamp(val, 0, 20);  // newval = 10
 
-float Beatdetector::getAverageEnergy(int subband){
-    return averageEnergy[subband];
-}
-
-float Beatdetector::getBand(int subband){
-    return fftSubbands[subband];
-}
-
-float Beatdetector::getMagnitude(){
-    return * magnitude;
-}
-
-float Beatdetector::getOnsetValue(int subband){
-    float onsetValue = 0.0;
-    if (fftSubbands[subband] * gain > (averageEnergy[subband] * beatConstant[subband] + (averageEnergy[subband] *sensitivity) ) && (fftSubbands[subband] > threshhold)){
-        onsetValue = ((fftSubbands[subband] * gain) - (averageEnergy[subband] * beatConstant[subband] + (averageEnergy[subband] *sensitivity)));
-    }
-    return onsetValue;
-}
-
-
-int Beatdetector::getBufferSize(){
-    return buffersize;
 }
 
 void Beatdetector::audioReceived(float* input, int bufferSize, int nChannels) {
@@ -203,7 +178,7 @@ void Beatdetector::audioReceived(float* input, int bufferSize, int nChannels) {
         magnitude[i] = powf(magnitude[i], 0.5);
     }
     
-        //calculation of average fft amplitude value
+    //calculation of average fft amplitude value
     for (int i = 0; i < fftsize; i++) {
         float x = 0.01;
         magnitude_average[i] = (magnitude[i] * x) + (magnitude_average[i] * (1 - x));
@@ -211,6 +186,47 @@ void Beatdetector::audioReceived(float* input, int bufferSize, int nChannels) {
 }
 
 
+// GETTERS
 
+float Beatdetector::getSmoothedVolume(){
+    return smoothedVolume;
+}
+
+float Beatdetector::getAverageEnergy(int subband){
+    return averageEnergy[subband];
+}
+
+float Beatdetector::getBandValue(int subband){
+    return fftSubbands[subband];
+}
+
+float Beatdetector::getMagnitude(){
+    return * magnitude;
+}
+
+float Beatdetector::getOnsetValue(int subband){
+    float onsetValue = 0.0;
+    if (fftSubbands[subband]  > (averageEnergy[subband] * beatConstant[subband]) && (fftSubbands[subband] > threshhold)){
+        onsetValue = ((fftSubbands[subband]) - (averageEnergy[subband] * beatConstant[subband]));
+    }
+    return onsetValue;
+}
+
+float Beatdetector::getMappedFftValue(int subband){
+    return mappedFftValues[subband];
+
+}
+
+int Beatdetector::getBufferSize(){
+    return buffersize;
+}
+
+// ONSET
+
+bool Beatdetector::checkBeat(int subband){
+    if(fftSubbands[subband] > (averageEnergy[subband] * beatConstant[subband]) && (fftSubbands[subband] > threshhold)){
+        return true;
+    }
+}
 
 
